@@ -139,6 +139,28 @@ grid_plot_ggplot2(geoPlotByPdDisrict, nrow = 6, ncol = 7)
 dev.off()
 
 
+## some customized text mining
+words <- unlist(strsplit(sf_train$Descrip, ' '))
+unique_word <- unique(unlist(strsplit(sf_train$Descrip, ' ')))
+list_unique_word <- as.list(unique_word)
+
+### compute document frequency
+cl <- makeCluster(4)
+registerDoParallel(cl)
+word_freq <- laply(list_unique_word, .parallel = T, .paropts = list(.export = c('words')), function(x){
+  sum(words == x)
+})
+stopCluster(cl)
+system.time(sum(words == list_unique_word[[1]]))
+system.time(grepl(list_unique_word[[1]], words))
+doc_freq <- data.frame(unique_word = unique_word,
+                        word_freq = word_freq)
+
+head(doc_freq[order(doc_freq$word_freq, decreasing = F)[1:100], ])
+hist(word_freq, breaks = 1000)
+
+# manually compute tf-dif
+
 
 
 
@@ -148,17 +170,30 @@ install.packages('tm')
 install.packages('wordcloud')
 library(tm)
 library(wordcloud)
-Descript_source <- VectorSource(sf_train$Descript)
-# Descript_corpus <- Corpus(Descript_source)
+#Descript_source <- VectorSource(sf_train$Descript)
+#Descript_corpus <- Corpus(Descript_source)
+#Descript_corpus <- tm_map(Descript_corpus, content_transformer(tolower))
+#Descript_corpus <- tm_map(Descript_corpus, removePunctuation)
+#Descript_corpus <- tm_map(Descript_corpus, removeWords, stopwords('english'))
+#dtm <- DocumentTermMatrix(Descript_corpus)
+#inspect(test_term_matrix[1:10, 1:10])
+
 
 test_source <- VectorSource(sf_train$Descript[1:100])
-test_corpus <- Corpus(Descript_test)
+test_corpus <- Corpus(test_source)
 length(test_corpus)
+inspect(test_corpus[1:2])
+as.character(test_corpus[[1]])
+lapply(test_corpus[1:10], as.character)
+
 test_corpus <- tm_map(test_corpus, content_transformer(tolower))
 test_corpus <- tm_map(test_corpus, removePunctuation)
 test_corpus <- tm_map(test_corpus, removeWords, stopwords('english'))
 test_term_matrix <- DocumentTermMatrix(test_corpus)
 inspect(test_term_matrix[1:10, 1:10])
+
+df_test_term_matrix <- data.frame(inspect(test_term_matrix))
+class(df_test_term_matrix)
 
 str(sf_train)
 sf_train$Address[sample(800000,100)]
