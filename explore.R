@@ -4,6 +4,7 @@ library(ggplot2)
 library(scales)
 library(plyr)
 library(doParallel)
+library(RTextTools)
 
 grid_plot_ggplot2 <- function(ggplotList, ncol, nrow){
   library(gridExtra)
@@ -12,6 +13,8 @@ grid_plot_ggplot2 <- function(ggplotList, ncol, nrow){
   do.call(grid.arrange, plotList)
 }
 
+#########################################################################################################################
+## step 1. data clean up and exploration
 
 sf_train <- fread('~/Documents/Kaggle/SF_crime/train.csv', sep = ',')
 sapply(sf_train, class)
@@ -139,33 +142,43 @@ grid_plot_ggplot2(geoPlotByPdDisrict, nrow = 6, ncol = 7)
 dev.off()
 
 
-## some customized text mining
-words <- unlist(strsplit(sf_train$Descrip, ' '))
-unique_word <- unique(unlist(strsplit(sf_train$Descrip, ' ')))
-list_unique_word <- as.list(unique_word)
+#########################################################################################################################
+## step 1. some customized text preparation
+trim <- function(dirty) clean <- gsub('[[:punct:]]', '', dirty)
+word_by_record <- strsplit(sf_train$Descrip, ' ')
+word_by_record <- llply(word_by_record, trim)
+word_by_record <- llply(word_by_record, tolower)
+word_by_record <- llply(word_by_record, RTextTools::wordStem)
+unique_words <- unique(unlist(word_by_record))
+sort(unique_words)
 
-### compute document frequency
-cl <- makeCluster(4)
-registerDoParallel(cl)
-word_freq <- laply(list_unique_word, .parallel = T, .paropts = list(.export = c('words')), function(x){
-  sum(words == x)
-})
-stopCluster(cl)
-system.time(sum(words == list_unique_word[[1]]))
-system.time(grepl(list_unique_word[[1]], words))
-doc_freq <- data.frame(unique_word = unique_word,
-                        word_freq = word_freq)
+## inverse document frequency
+term_freq_bool <- llply(word_by_record, function(x){as.numeric(unique_words%in%x)})
+term_freq_bool <- as.data.table(do.call(rbind, term_freq_bool))
+save(term_freq_bool, file = '~/my_Git_repos/SF_Crime/term_freq_boolean_description.Rda')
+colnames(term_freq_bool) <- unique_words
+system.time(doc_freq <- apply(term_freq_bool, 2, sum)) # 18 sec
+system.time(doc_freq <- as.numeric(term_freq_bool[,lapply(.SD, sum, na.rm=TRUE)])) # 1.7 sec
+idf_by_word <- data.table(unique_words,
+                          idf = log(length(word_by_record)/doc_freq))
+idf_by_word[order(idf)]
 
-head(doc_freq[order(doc_freq$word_freq, decreasing = F)[1:100], ])
-hist(word_freq, breaks = 1000)
+tf_idf <- t(t(term_freq_bool) * idf_by_word$idf)
+dim(tf_idf)
+colnames(tf_idf)[1:10]
+tf_idf[1:10, colnames(tf_idf)[1:10]]
+save(tf_idf, file = 'tf_idf_description.Rda')
+sf_train <- data.table(sf_train, tf_idf)
+save(sf_train, file = '~/my_Git_repos/SF_Crime/sf_train.Rda')
 
-# manually compute tf-dif
+colnames(sf_train)
+
+attr_to_exclude <- c(1,3,10,14,16)
+train_rf1 <- randomForest::randomForest(Category~., data = sf_train[, -attr_to_exclude, with = F], ntree = 1000, replace = F)
 
 
-
-
-
-## some text mining
+#########################################################################################################################
+## ARCHIVE scripts
 install.packages('tm')
 install.packages('wordcloud')
 library(tm)
@@ -205,6 +218,21 @@ hist(sapply(Address1, length))
 
 sf_train$Address[1:20]
 
-
-
 strsplit(sf_train$Address[15], ' / | of ')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
