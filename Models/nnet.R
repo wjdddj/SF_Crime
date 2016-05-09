@@ -21,6 +21,8 @@ sf_train1$Date <- NULL
 train_nn1 <- nnet(Category~., data = sf_train1[,1:3,with=F], size = 10, maxit = 100)
 mcll(train_nn1$fitted.values, sf_train1$Category)
 
+dim(predict(train_nn1))
+
 
 library(neuralnet)
 + Year + Month + Hour
